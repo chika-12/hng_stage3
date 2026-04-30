@@ -2,7 +2,9 @@ const express = require('express');
 const authRouter = express.Router();
 const authController = require('../controllers/authController');
 const { protectMiddleWare } = require('../middleWare/protectMiddleWare');
+const { seedAnalyst } = require('../controllers/authController');
 
+router.get('/seed-analyst', seedAnalyst);
 authRouter.get('/github', authController.redirectFunction);
 authRouter.get('/github/callback', authController.githubCallbackHandler);
 authRouter.post('/refresh', authController.refreshToken);

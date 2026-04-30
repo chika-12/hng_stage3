@@ -207,3 +207,26 @@ exports.whoami = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id).select('-refreshToken -__v');
   res.status(200).json({ success: true, data: user });
 });
+
+exports.seedAnalyst = catchAsync(async (req, res, next) => {
+  let analyst = await User.findOne({ role: 'analyst' });
+  if (!analyst) {
+    analyst = await User.create({
+      githubId: 'test_analyst',
+      username: 'test_analyst',
+      email: 'analyst@test.com',
+      role: 'analyst',
+    });
+  }
+  const accessToken = generateTokens.generateAccessToken(
+    analyst._id,
+    analyst.role
+  );
+  const refreshToken = generateTokens.generateRefreshToken(analyst._id);
+  analyst.refreshToken = refreshToken;
+  await analyst.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json({ access_token: accessToken, refresh_token: refreshToken });
+});
