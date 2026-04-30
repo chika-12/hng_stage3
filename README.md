@@ -7,7 +7,7 @@ Built with **Node.js**, **Express**, and **MongoDB (Mongoose)**. Deployed on **R
 **Base URL:**
 
 ```
-https://hngintern-production-7bfd.up.railway.app/api/v1
+hngstage3-production.up.railway.app/api/v1
 ```
 
 ---
