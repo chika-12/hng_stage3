@@ -17,20 +17,25 @@ exports.getProfiles = catchAsync(async (req, res, next) => {
     Profile.find(filter).sort(sortBy).skip(skip).limit(limit),
     Profile.countDocuments(filter),
   ]);
-  const totalPages = Math.ceil(total / limit);
+  const total_pages = Math.ceil(total / limit);
+  const base = `/api/v1/profiles`;
 
   return res.status(200).json({
     status: 'success',
     page,
     limit,
     total,
-    totalPages,
-    hasNextPage: page < totalPages,
-    hasPrevPage: page > 1,
+    total_pages,
+    links: {
+      first: `${base}?page=1&limit=${limit}`,
+      prev: page > 1 ? `${base}?page=${page - 1}&limit=${limit}` : null,
+      next:
+        page < total_pages ? `${base}?page=${page + 1}&limit=${limit}` : null,
+      last: `${base}?page=${total_pages}&limit=${limit}`,
+    },
     data: profiles,
   });
 });
-
 //Create profile
 exports.createProfiles = catchAsync(async (req, res, next) => {
   const requestedName = req.body.name;
@@ -236,23 +241,25 @@ exports.searchProfiles = catchAsync(async (req, res, next) => {
     data: profiles,
   });
 });
-
 exports.exportProfiles = catchAsync(async (req, res, next) => {
   const profiles = await Profile.find().lean();
   if (!profiles || profiles.length === 0) {
     return next(new AppError('No profiles found to export', 404));
   }
+
   const fields = [
     'id',
     'name',
     'gender',
-    'gender_probability',
     'age',
     'age_group',
     'country_id',
     'country_name',
+    'gender_probability',
     'country_probability',
+    'created_at', // ← add this
   ];
+
   const parser = new Parser({ fields });
   const csv = parser.parse(profiles);
   res.setHeader('Content-Type', 'text/csv');

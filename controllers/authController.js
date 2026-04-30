@@ -156,12 +156,12 @@ exports.githubCallbackHandler = catchAsync(async (req, res, next) => {
   res.cookie('access_token', accessToken, cookieConfig.accessToken);
   res.cookie('refresh_token', refreshToken, cookieConfig.refreshToken);
   res.cookie('csrf_token', csrfToken, {
-    httpOnly: false,
+    httpOnly: true,
     sameSite: isProd ? 'none' : 'lax',
     secure: isProd,
     maxAge: 24 * 60 * 60 * 1000,
   });
-
+  res.setHeader('X-CSRF-Token', csrfToken);
   res.redirect(`${process.env.WEB_PORTAL_URL}?csrf=${csrfToken}`);
 });
 
@@ -183,7 +183,7 @@ exports.refreshToken = catchAsync(async (req, res, next) => {
   }
 
   const accessToken = generateTokens.generateAccessToken(user._id, user.role);
-  return res.status(200).json({ accessToken });
+  return res.status(200).json({ status: 'success', access_token: accessToken });
 });
 
 exports.logout = catchAsync(async (req, res, next) => {
@@ -205,7 +205,18 @@ exports.logout = catchAsync(async (req, res, next) => {
 
 exports.whoami = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id).select('-refreshToken -__v');
-  res.status(200).json({ success: true, data: user });
+  res.status(200).json({
+    status: 'success',
+    data: {
+      id: user.id.toString(),
+      github_id: user.githubId,
+      username: user.username,
+      email: user.email,
+      avatar_url: user.avatarUrl || user.avatar_url || null,
+      role: user.role,
+      created_at: user.createdAt,
+    },
+  });
 });
 
 exports.seedAnalyst = catchAsync(async (req, res, next) => {

@@ -16,11 +16,12 @@ exports.csrfCookie = (req, res, next) => {
   if (!req.cookies.csrf_token) {
     const token = generateCsrfToken();
     res.cookie('csrf_token', token, {
-      httpOnly: false, // must be readable by JS
+      httpOnly: true,
       sameSite: isProd ? 'none' : 'lax',
       secure: isProd,
       maxAge: 24 * 60 * 60 * 1000,
     });
+    res.setHeader('X-CSRF-Token', token);
   }
   next();
 };

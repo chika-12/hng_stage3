@@ -7,21 +7,24 @@ const cors = require('cors');
 const xss = require('xss-clean');
 const profileRoute = require('./route/profileRoute');
 const app = express();
+app.set('trust proxy', 1);
 const cookieParser = require('cookie-parser');
 const globalErrorHandler = require('./middleWare/globalErrorHandler');
 const authRouter = require('./route/authRoute');
 const morgan = require('morgan');
 const { csrfCookie, csrfProtect } = require('./middleWare/csrfMiddleware');
+const requireApiVersion = require('./middleware/requireApiVersion');
 
 const corsOptions = {
-  origin: [
-    'http://localhost:5500',
-    'http://localhost:3000',
-    'https://insighta-web-portal-eta.vercel.app',
-  ],
+  origin: (origin, callback) => callback(null, true),
   credentials: true,
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-csrf-token',
+    'api-version',
+  ],
 };
 
 app.use(cors(corsOptions));
@@ -56,11 +59,10 @@ const apiLimiter = rate_limiter({
     message: 'Too many requests from this IP. Try again later.',
   }),
 });
+app.use('/api/v1', requireApiVersion);
 
-// ── Routes ──
 app.use('/api', apiLimiter);
 
-// Auth limiter applied to ALL auth route variations
 app.use('/auth', authLimiter, authRouter);
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/v1/auth', authLimiter, authRouter);
