@@ -13,7 +13,7 @@ const globalErrorHandler = require('./middleWare/globalErrorHandler');
 const authRouter = require('./route/authRoute');
 const morgan = require('morgan');
 const { csrfCookie, csrfProtect } = require('./middleWare/csrfMiddleware');
-const requireApiVersion = require('./middleware/requireApiVersion');
+const requireApiVersion = require('./middleWare/requireApiVersion');
 
 const corsOptions = {
   origin: (origin, callback) => callback(null, true),
