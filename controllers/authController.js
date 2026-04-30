@@ -126,9 +126,18 @@ exports.githubCallbackHandler = catchAsync(async (req, res, next) => {
     );
   }
 
+  const csrfToken = crypto.randomBytes(32).toString('hex');
+
   res.cookie('access_token', accessToken, cookieConfig.accessToken);
   res.cookie('refresh_token', refreshToken, cookieConfig.refreshToken);
-  res.redirect(process.env.WEB_PORTAL_URL);
+  res.cookie('csrf_token', csrfToken, {
+    httpOnly: false,
+    sameSite: isProd ? 'none' : 'lax',
+    secure: isProd,
+    maxAge: 24 * 60 * 60 * 1000,
+  });
+
+  res.redirect(`${process.env.WEB_PORTAL_URL}?csrf=${csrfToken}`);
 });
 
 exports.refreshToken = catchAsync(async (req, res, next) => {
