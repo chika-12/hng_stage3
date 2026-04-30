@@ -13,19 +13,19 @@ const authRouter = require('./route/authRoute');
 const morgan = require('morgan');
 const { csrfCookie, csrfProtect } = require('./middleWare/csrfMiddleware');
 
-app.use(
-  cors({
-    origin: [
-      'http://localhost:5500',
-      'http://localhost:3000',
-      'https://insighta-web-portal-eta.vercel.app',
-    ],
-    credentials: true,
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
-  })
-);
-app.options('*', cors());
+const corsOptions = {
+  origin: [
+    'http://localhost:5500',
+    'http://localhost:3000',
+    'https://insighta-web-portal-eta.vercel.app',
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // ← must use same config, not bare cors()
 
 app.use(helmet());
 app.use(xss());
@@ -33,10 +33,8 @@ app.use(hpp());
 app.use(mongodb_sanitizer());
 app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser());
-
 app.use(csrfCookie);
 app.use(csrfProtect);
-
 app.use(morgan('combined'));
 
 const authLimiter = rate_limiter({
@@ -59,12 +57,17 @@ const apiLimiter = rate_limiter({
   }),
 });
 
+// ── Routes ──
 app.use('/api', apiLimiter);
+
+// Auth limiter applied to ALL auth route variations
 app.use('/auth', authLimiter, authRouter);
-app.use('/api/auth', authRouter);
-app.use('/api/v1/auth', authRouter);
+app.use('/api/auth', authLimiter, authRouter);
+app.use('/api/v1/auth', authLimiter, authRouter);
+
 app.use('/api/v1', profileRoute);
 app.use('/api', profileRoute);
+
 app.use(globalErrorHandler);
 
 module.exports = app;
