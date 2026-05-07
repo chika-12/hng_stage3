@@ -56,11 +56,8 @@ const profileSchema = new mongoose.Schema(
     },
   }
 );
-profileSchema.index({ gender: 1 });
-profileSchema.index({ country_id: 1 });
-profileSchema.index({ age_group: 1 });
 //profileSchema.index({ name: 1 });
-profileSchema.index({ gender: 1, country_id: 1, age_group: 1 });
+profileSchema.index({ country_id: 1, gender: 1, age_group: 1 });
 
 const Profile = mongoose.model('Profile', profileSchema);
 module.exports = Profile;

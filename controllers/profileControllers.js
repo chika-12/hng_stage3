@@ -7,11 +7,22 @@ const validateQuery = require('../queryFeatures/validateQuery.js');
 const parseSearchQuery = require('../queryFeatures/searchParser.js');
 const AppError = require('../utils/appError.js');
 const { Parser } = require('json2csv');
+const redis = require('../utils/redisClient.js')
 
 //Get all profiles and accepts query params
 exports.getProfiles = catchAsync(async (req, res, next) => {
-  const { filter, sortBy, page, limit, skip } = queryBuilder(req.query);
   validateQuery(req.query);
+
+  //Cache implementation
+  const cachedKey = `profiles:${JSON.stringify(req.query)}`
+  const cached = await redis.get(cachedKey)
+  if (cached){
+    return res.status(200).json({
+      cached,
+      source: 'redis'
+    })
+  }
+  const { filter, sortBy, page, limit, skip } = queryBuilder(req.query);
 
   const [profiles, total] = await Promise.all([
     Profile.find(filter).sort(sortBy).skip(skip).limit(limit),
@@ -20,7 +31,7 @@ exports.getProfiles = catchAsync(async (req, res, next) => {
   const total_pages = Math.ceil(total / limit);
   const base = `/api/v1/profiles`;
 
-  return res.status(200).json({
+  const response = {
     status: 'success',
     page,
     limit,
@@ -34,8 +45,11 @@ exports.getProfiles = catchAsync(async (req, res, next) => {
       last: `${base}?page=${total_pages}&limit=${limit}`,
     },
     data: profiles,
-  });
+  };
+  await redis.set(cachedKey, response, {ex: 1800})
+  return res.status(200).json(response)
 });
+
 //Create profile
 exports.createProfiles = catchAsync(async (req, res, next) => {
   const requestedName = req.body.name;
