@@ -6,30 +6,31 @@ const {
   requireRole,
 } = require('../middleWare/protectMiddleWare');
 const authController = require('../controllers/authController');
+const roleLimiter = require('../middleWare/role_limiter')
 
 //profileRoute.use(protectMiddleWare);
 profileRoute.get(
   '/profiles/search',
-  protectMiddleWare,
+  protectMiddleWare,requireRole(['analyst', 'admin']),roleLimiter.roleLimiter,
   controllers.searchProfiles
 );
 profileRoute
   .route('/profiles')
-  .get(protectMiddleWare, controllers.getProfiles)
-  .post(protectMiddleWare, requireRole(['admin']), controllers.createProfiles);
+  .get(protectMiddleWare, requireRole(['admin', 'analyst']),roleLimiter.roleLimiter, controllers.getProfiles)
+  .post(protectMiddleWare, requireRole(['admin']), roleLimiter.roleLimiter, controllers.createProfiles);
 
 profileRoute.get('/users/me', protectMiddleWare, authController.whoami);
 
 profileRoute.get(
   '/profiles/export',
   protectMiddleWare,
-  requireRole(['admin']),
+  requireRole(['admin', 'analyst']),
   controllers.exportProfiles
 );
 
 profileRoute
   .route('/profiles/:id')
-  .get(protectMiddleWare, controllers.getProfilesById)
+  .get(protectMiddleWare, requireRole(['admin', 'analyst']), controllers.getProfilesById)
   .delete(
     protectMiddleWare,
     requireRole(['admin']),

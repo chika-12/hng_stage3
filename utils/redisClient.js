@@ -5,4 +5,13 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-module.exports = redis;
+
+const invalidateProfileCache = async () => {
+  const keys = await redis.keys('profiles:*');
+  if (keys.length > 0) {
+    await redis.del(...keys);
+    console.log(`Cache invalidated: ${keys.length} keys cleared`);
+  }
+};
+
+module.exports = { redis, invalidateProfileCache };

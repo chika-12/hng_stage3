@@ -7,7 +7,8 @@ const validateQuery = require('../queryFeatures/validateQuery.js');
 const parseSearchQuery = require('../queryFeatures/searchParser.js');
 const AppError = require('../utils/appError.js');
 const { Parser } = require('json2csv');
-const redis = require('../utils/redisClient.js')
+const {redis } = require('../utils/redisClient.js')
+const {invalidateProfileCache} = require('../utils/redisClient.js')
 
 //Get all profiles and accepts query params
 exports.getProfiles = catchAsync(async (req, res, next) => {
