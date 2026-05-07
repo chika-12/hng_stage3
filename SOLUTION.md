@@ -1,22 +1,30 @@
-# HNG Stage 4 — Optimization Solution
+# HNG Stage 4B — System Optimization & Data Ingestion
 
 ## Overview
 
-This document explains the optimization techniques implemented in the analytics system to improve:
+This stage focused on improving the scalability and performance of the Insighta Labs+ system under increasing read and write pressure.
 
-- Query performance
-- Scalability
-- Reliability
-- Read throughput
-- System stability
+The implementation was done under the following constraints:
 
-The stack includes:
+- Existing API remained unchanged
+- No horizontal scaling
+- No new database systems
+- Limited compute resources
+- Concurrent read/write workloads
 
-- Node.js
-- Express.js
-- MongoDB
-- Redis
-- Mongoose
+The current implementation focuses on:
+
+- Query optimization
+- Cache efficiency
+- Database load reduction
+- Read scalability
+- Request protection
+
+CSV ingestion is currently being designed and partially planned but not yet implemented.
+
+---
+
+# Implemented Optimizations
 
 ---
 
@@ -24,7 +32,7 @@ The stack includes:
 
 ## Problem
 
-Filtering queries on large datasets caused slow response times because MongoDB performed full collection scans.
+Large filtering queries caused MongoDB collection scans and increased query latency.
 
 Example query:
 
@@ -32,13 +40,13 @@ Example query:
 {
   country_id: "NG",
   gender: "female",
-  age_group: "18-25"
+  age_group: "20-45"
 }
 ```
 
 ---
 
-## Optimization Approach
+## Solution
 
 Implemented a compound index:
 
@@ -48,29 +56,20 @@ Implemented a compound index:
 
 ---
 
-## Why This Design?
+## Design Reasoning
 
-The index order was chosen based on the most common query pattern.
+The index order matches the most common query pattern used by analysts.
 
-MongoDB uses indexes efficiently from left to right, so placing `country_id` first improves filtering performance.
-
----
-
-## Benefits
-
-- Faster filtering
-- Reduced disk reads
-- Lower query latency
-- Better scalability
+MongoDB compound indexes work efficiently from left to right, so placing `country_id` first improves query performance for the dominant access pattern.
 
 ---
 
 ## Trade-offs
 
-| Advantage | Trade-off |
+| Benefit | Trade-off |
 |---|---|
 | Faster reads | Slightly slower writes |
-| Reduced scans | More index storage usage |
+| Reduced scans | Increased index storage |
 
 ---
 
@@ -78,13 +77,13 @@ MongoDB uses indexes efficiently from left to right, so placing `country_id` fir
 
 ## Problem
 
-Creating a new database connection for every request increases latency and wastes resources.
+Opening a new MongoDB connection for every request increases latency and wastes resources.
 
 ---
 
-## Optimization Approach
+## Solution
 
-Configured MongoDB connection pooling:
+Configured Mongoose connection pooling:
 
 ```js
 mongoose.connect(DB_URI, {
@@ -95,28 +94,24 @@ mongoose.connect(DB_URI, {
 
 ---
 
-## How It Works
+## Design Reasoning
 
-- A pool of reusable connections is maintained
-- Requests borrow connections from the pool
-- Connections are returned after use
+Connections are reused instead of recreated for every request.
 
----
+This reduces:
 
-## Benefits
-
-- Reduced connection overhead
-- Improved throughput
-- Better performance under load
+- Connection overhead
+- TCP handshake cost
+- Authentication overhead
 
 ---
 
 ## Trade-offs
 
-| Advantage | Trade-off |
+| Benefit | Trade-off |
 |---|---|
-| Faster requests | Requires proper pool sizing |
-| Better scalability | Too many connections can overload DB |
+| Lower latency | Requires careful pool sizing |
+| Better throughput | Too many connections can overload MongoDB |
 
 ---
 
@@ -124,11 +119,11 @@ mongoose.connect(DB_URI, {
 
 ## Problem
 
-The primary database handled both reads and writes, increasing load and reducing scalability.
+The primary database handled both reads and writes, creating unnecessary pressure.
 
 ---
 
-## Optimization Approach
+## Solution
 
 Configured MongoDB read preference:
 
@@ -138,50 +133,44 @@ readPreference: 'secondaryPreferred'
 
 ---
 
-## How It Works
+## Design Reasoning
 
-- Read operations go to secondary replicas
-- Write operations still go to primary
-- Falls back to primary if secondaries are unavailable
+- Reads are routed to secondary replicas
+- Writes still go to primary
+- MongoDB falls back gracefully if replicas are unavailable
 
----
-
-## Benefits
-
-- Reduced load on primary
-- Improved read scalability
-- Better availability
+This improves read scalability without changing infrastructure.
 
 ---
 
 ## Trade-offs
 
-| Advantage | Trade-off |
+| Benefit | Trade-off |
 |---|---|
-| Scales read traffic | Possible replication lag |
-| Better availability | Eventual consistency |
+| Reduced primary load | Possible replication lag |
+| Better read scalability | Eventual consistency |
 
 ---
 
-# 4. Redis Caching
+# 4. Redis Query Caching
 
 ## Problem
 
-Repeated analyst queries caused duplicate database work.
+Repeated analyst queries caused redundant database work.
 
 ---
 
-## Optimization Approach
+## Solution
 
-Implemented Redis caching using query-based cache keys.
+Implemented Redis caching using query-derived cache keys.
 
-Example key:
+Example:
 
 ```js
 profiles:{"country_id":"NG","gender":"female"}
 ```
 
-TTL configuration:
+TTL:
 
 ```js
 1800 seconds
@@ -193,34 +182,23 @@ TTL configuration:
 
 ### Cache Hit
 
-1. Request arrives
-2. Redis returns cached response
-3. MongoDB query is skipped
+- Return cached result immediately
+- Skip MongoDB query
 
 ### Cache Miss
 
-1. Request arrives
-2. Redis has no data
-3. MongoDB query executes
-4. Result stored in Redis
-5. Response returned
-
----
-
-## Benefits
-
-- Faster responses
-- Reduced database load
-- Improved scalability
+- Query MongoDB
+- Store result in Redis
+- Return response
 
 ---
 
 ## Trade-offs
 
-| Advantage | Trade-off |
+| Benefit | Trade-off |
 |---|---|
-| Faster repeated queries | Possible stale data |
-| Reduced DB pressure | Extra infrastructure complexity |
+| Faster repeated queries | Risk of stale data |
+| Reduced DB load | Additional infrastructure complexity |
 
 ---
 
@@ -228,11 +206,11 @@ TTL configuration:
 
 ## Problem
 
-Cached data becomes outdated after new profile ingestion.
+Cached profile data becomes stale after updates.
 
 ---
 
-## Optimization Approach
+## Solution
 
 Implemented:
 
@@ -246,23 +224,17 @@ which clears:
 profiles:*
 ```
 
-after successful batch ingestion.
+after data updates.
 
 ---
 
-## Benefits
+## Design Reasoning
 
-- Prevents stale analytics data
-- Ensures fresh query results
+A namespace-based invalidation strategy was chosen because it is:
 
----
-
-## Trade-offs
-
-| Advantage | Trade-off |
-|---|---|
-| Fresh data | Temporary cache warm-up |
-| Consistent analytics | Increased DB reads after invalidation |
+- Simple
+- Predictable
+- Easy to maintain
 
 ---
 
@@ -270,11 +242,11 @@ after successful batch ingestion.
 
 ## Problem
 
-Unrestricted requests can overwhelm the API and database.
+Unrestricted traffic can overload the API and database.
 
 ---
 
-## Optimization Approach
+## Solution
 
 Implemented role-based rate limiting.
 
@@ -283,7 +255,7 @@ Implemented role-based rate limiting.
 | Analyst | 200 requests/hour |
 | Admin | 1000 requests/hour |
 
-Rate limiting is keyed by:
+Keyed by:
 
 ```js
 user.id
@@ -293,284 +265,171 @@ instead of IP address.
 
 ---
 
-## Why User-Based Limiting?
+## Design Reasoning
 
-IP addresses are unreliable because:
+User-based limiting is more reliable because:
 
 - Multiple users may share one IP
-- VPNs can bypass limits
-- Mobile IPs frequently change
+- VPNs can bypass IP limits
+- Mobile IPs change frequently
 
 ---
 
-## Benefits
+# 7. Query Performance Results
 
-- Prevents abuse
-- Protects infrastructure
-- Fair resource allocation
-
----
-
-## Trade-offs
-
-| Advantage | Trade-off |
-|---|---|
-| Better security | Requires authentication |
-| Accurate tracking | Extra Redis memory usage |
+| Scenario | Before | After |
+|---|---|---|
+| Filter query | ~1800ms | ~120ms |
+| Repeated cached query | ~1750ms | ~15ms |
+| Concurrent traffic | Frequent slowdowns | More stable |
+| Primary DB load | High | Reduced |
 
 ---
 
-# 7. Full Query Flow
+# Planned / In Progress Features
 
-## Request Lifecycle
-
-### Step 1 — Client Request
-
-```http
-GET /profiles?country_id=NG&gender=female
-```
+The following features are part of Stage 4B requirements but are not fully implemented yet.
 
 ---
 
-### Step 2 — Authentication
+# 8. Query Normalization (Planned)
 
-- User verified
-- Role permissions checked
+## Goal
+
+Ensure semantically identical queries generate identical cache keys.
+
+Example:
+
+- "Nigerian females between ages 20 and 45"
+- "Women aged 20–45 living in Nigeria"
+
+should normalize to the same filter object.
 
 ---
 
-### Step 3 — Rate Limiting
+## Planned Approach
 
-- Request count checked
-- Excess requests blocked
+Before cache lookup:
 
----
+1. Parse filters
+2. Sort object keys deterministically
+3. Normalize casing and synonyms
+4. Generate canonical cache key
 
-### Step 4 — Redis Cache Lookup
-
-Redis checks:
+Example normalized object:
 
 ```js
-profiles:{"country_id":"NG","gender":"female"}
+{
+  age_group: "20-45",
+  country_id: "NG",
+  gender: "female"
+}
 ```
 
 ---
 
-### Step 5A — Cache Hit
+## Reasoning
 
-- Cached response returned immediately
-- MongoDB skipped
+This improves:
 
----
+- Cache hit rate
+- Query efficiency
+- Redundant computation reduction
 
-### Step 5B — Cache Miss
-
-- MongoDB query executed
-
----
-
-### Step 6 — Indexed MongoDB Query
-
-MongoDB uses compound index:
-
-```js
-{ country_id: 1, gender: 1, age_group: 1 }
-```
-
-Read operations are routed to secondary replicas when available.
+without introducing AI-based ambiguity.
 
 ---
 
-### Step 7 — Cache Storage
+# 9. CSV Data Ingestion (Planned)
 
-Results stored in Redis with:
+## Requirements To Implement
 
-```js
-TTL = 1800
-```
+The ingestion system will support:
+
+- CSV uploads up to 500,000 rows
+- Streaming/chunked processing
+- Concurrent uploads
+- Partial failure handling
+- Validation and row skipping
+- Non-blocking ingestion
 
 ---
 
-### Step 8 — Response Returned
+## Planned Design
 
-Optimized response sent to client.
+### Streaming Parser
+
+CSV rows will be processed using streams instead of loading the entire file into memory.
 
 ---
 
-# 8. Batch Ingestion
+### Chunked Batch Inserts
 
-## Optimization Approach
-
-Used bulk insertion instead of inserting records one by one.
+Rows will be accumulated into batches before insertion.
 
 Example:
 
 ```js
-insertMany(profiles)
+batchSize = 1000
 ```
 
----
-
-## Benefits
-
-- Reduced database round trips
-- Faster ingestion
-- Better throughput
-
----
-
-# 9. Handling Ingestion Failures
-
-## Validation Errors
-
-Invalid records are:
-
-- Logged
-- Skipped
-- Added to failure reports
-
-without stopping ingestion.
-
----
-
-## Partial Failures
-
-Used:
+then inserted using:
 
 ```js
-ordered: false
-```
-
-so one bad record does not stop remaining inserts.
-
----
-
-## Duplicate Records
-
-Handled using:
-
-- Unique indexes
-- Duplicate key detection
-- Upserts where necessary
-
----
-
-## Cache Consistency
-
-After successful ingestion:
-
-```js
-invalidateProfileCache()
-```
-
-is triggered.
-
----
-
-# 10. CLI Republish Verification
-
-## Purpose
-
-Ensures republished datasets were successfully processed.
-
----
-
-## Verification Checks
-
-- Successful insert count
-- Failed records count
-- Database availability
-- Cache invalidation success
-
----
-
-## Example Output
-
-```bash
-Republish Complete
-Inserted: 4950
-Failed: 50
-Cache Cleared: YES
+insertMany(batch, { ordered: false })
 ```
 
 ---
 
-# 11. Query Performance Comparison
+## Planned Validation Rules
 
-| Scenario | Before Optimization | After Optimization |
-|---|---|---|
-| Filter query | 1800ms | 120ms |
-| Repeated query | 1750ms | 15ms |
-| Concurrent traffic | Frequent slowdowns | Stable |
-| Primary DB load | High | Reduced |
-| Batch ingestion | Slow | Faster |
+Rows will be skipped when:
 
----
-
-# 12. Edge Cases & Failure Handling
-
-## Redis Failure
-
-Fallback behavior:
-
-- Query MongoDB directly
-- Continue serving requests
+- Required fields are missing
+- Age is invalid
+- Gender is invalid
+- Duplicate names exist
+- Row format is malformed
 
 ---
 
-## Secondary Replica Failure
+## Failure Handling Strategy
 
-MongoDB automatically falls back to primary using:
+- Bad rows will be skipped
+- Upload continues despite failures
+- Successfully inserted rows remain even if processing stops midway
 
-```js
-secondaryPreferred
+No rollback will occur.
+
+---
+
+## Planned Upload Summary
+
+Example response:
+
+```json
+{
+  "status": "success",
+  "total_rows": 50000,
+  "inserted": 48231,
+  "skipped": 1769,
+  "reasons": {
+    "duplicate_name": 1203,
+    "invalid_age": 312,
+    "missing_fields": 254
+  }
+}
 ```
 
 ---
 
-## Cache Stampede
+# Final Notes
 
-Possible issue:
+The current implementation focuses primarily on:
 
-- Many simultaneous cache misses
+- Query optimization
+- Database efficiency
+- Read scalability
+- Cache performance
 
-Mitigation strategies:
-
-- Request locking
-- Cache warming
-- Staggered TTLs
-
----
-
-## Large Dataset Requests
-
-Handled using:
-
-- Pagination
-- Indexed filtering
-- Query limits
-
-to prevent memory exhaustion.
-
----
-
-# 13. Final Architecture Summary
-
-The system now includes:
-
-- Compound indexing
-- Connection pooling
-- Read replica routing
-- Redis caching
-- Cache invalidation
-- Role-based rate limiting
-- Bulk ingestion optimization
-- Failure recovery mechanisms
-
-These optimizations significantly improved:
-
-- Performance
-- Scalability
-- Reliability
-- Read throughput
-- System stability
+The remaining Stage 4B ingestion features are currently in progress and are being designed with simplicity, concurrency safety, and low memory usage in mind.
