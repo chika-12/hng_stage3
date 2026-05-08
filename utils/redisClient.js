@@ -5,7 +5,6 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-
 const invalidateProfileCache = async () => {
   const keys = await redis.keys('profiles:*');
   if (keys.length > 0) {
@@ -14,4 +13,12 @@ const invalidateProfileCache = async () => {
   }
 };
 
-module.exports = { redis, invalidateProfileCache };
+const normalizeQuery = (query) => {
+  return Object.keys(query)
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = query[key].toString().toLowerCase().trim();
+      return acc;
+    }, {});
+};
+module.exports = { redis, invalidateProfileCache, normalizeQuery };

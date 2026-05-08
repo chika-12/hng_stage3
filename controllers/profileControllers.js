@@ -12,6 +12,7 @@ const { invalidateProfileCache } = require('../utils/redisClient.js');
 const { validateRow, normalizeRow } = require('../utils/validateProfileRow');
 const fs = require('fs');
 const csv = require('csv-parser');
+const { normalizeQuery } = require('../utils/redisClient.js');
 
 const CHUNK_SIZE = 500;
 
@@ -20,7 +21,8 @@ exports.getProfiles = catchAsync(async (req, res, next) => {
   validateQuery(req.query);
 
   //Cache implementation
-  const cachedKey = `profiles:${JSON.stringify(req.query)}`;
+  const normalize = normalizeQuery(req.query);
+  const cachedKey = `profiles:${JSON.stringify(normalize)}`;
   const cached = await redis.get(cachedKey);
   if (cached) {
     return res.status(200).json({
