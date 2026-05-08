@@ -300,9 +300,24 @@ exports.searchProfiles = catchAsync(async (req, res, next) => {
     });
   }
 
-  // Build the Mongoose filter from parsed result
-  const mongoFilter = {};
+  const pg = Math.max(1, Number(page) || 1);
+  const lim = Math.min(50, Math.max(1, Number(limit) || 10));
 
+  // Normalize and cache key
+  const normalized = normalizeQuery({
+    q: q.toLowerCase().trim(),
+    page: String(pg),
+    limit: String(lim),
+  });
+  const cachedKey = `profiles:search:${JSON.stringify(normalized)}`;
+
+  const cached = await redis.get(cachedKey);
+  if (cached) {
+    return res.status(200).json({ ...cached, source: 'redis' });
+  }
+
+  // Build Mongoose filter
+  const mongoFilter = {};
   if (parsedFilter.gender) mongoFilter.gender = parsedFilter.gender;
   if (parsedFilter.age_group) mongoFilter.age_group = parsedFilter.age_group;
   if (parsedFilter.country_id) mongoFilter.country_id = parsedFilter.country_id;
@@ -312,23 +327,20 @@ exports.searchProfiles = catchAsync(async (req, res, next) => {
     if (parsedFilter.max_age) mongoFilter.age.$lte = parsedFilter.max_age;
   }
 
-  const pg = Math.max(1, Number(page) || 1);
-  const lim = Math.min(50, Math.max(1, Number(limit) || 10));
   const skip = (pg - 1) * lim;
 
-  //const { filter, sortBy, page, limit, skip } = queryBuilder(mongoFilter);
   const [profiles, total] = await Promise.all([
     Profile.find(mongoFilter).sort('-created_at').skip(skip).limit(lim).lean(),
     Profile.countDocuments(mongoFilter),
   ]);
 
   if (!profiles) {
-    return next(AppError('Unable to interpret query', 400));
+    return next(new AppError('Unable to interpret query', 400));
   }
 
   const totalPages = Math.ceil(total / lim);
 
-  return res.status(200).json({
+  const response = {
     status: 'success',
     query: q,
     interpreted: parsedFilter,
@@ -339,7 +351,11 @@ exports.searchProfiles = catchAsync(async (req, res, next) => {
     hasNextPage: pg < totalPages,
     hasPrevPage: pg > 1,
     data: profiles,
-  });
+  };
+
+  await redis.set(cachedKey, response, { ex: 1800 });
+
+  return res.status(200).json(response);
 });
 exports.exportProfiles = catchAsync(async (req, res, next) => {
   const profiles = await Profile.find().lean();
