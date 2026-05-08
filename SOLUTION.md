@@ -431,5 +431,3 @@ The current implementation focuses primarily on:
 - Database efficiency
 - Read scalability
 - Cache performance
-
-The remaining Stage 4B ingestion features are currently in progress and are being designed with simplicity, concurrency safety, and low memory usage in mind.

@@ -239,5 +239,28 @@ exports.seedAnalyst = catchAsync(async (req, res, next) => {
 
   return res
     .status(200)
-    .json({ access_token: accessToken, refresh_token: refreshToken });
+    .json({ analyst, access_token: accessToken, refresh_token: refreshToken });
+});
+
+exports.seedAdmin = catchAsync(async (req, res, next) => {
+  let admin = await User.findOne({ role: 'admin' });
+  if (!admin) {
+    admin = await User.create({
+      githubId: 'test_admin',
+      username: 'test_admin',
+      email: 'admin@test.com',
+      role: 'admin',
+    });
+  }
+
+  const accessToken = generateTokens.generateAccessToken(admin._id, admin.role);
+  const refreshToken = generateTokens.generateRefreshToken(admin._id);
+  admin.refreshToken = refreshToken;
+  await admin.save({ validateBeforeSave: false });
+
+  return res.status(200).json({
+    admin,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
 });

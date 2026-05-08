@@ -8,6 +8,7 @@ const EXEMPT_PATHS = [
   '/auth/github/callback',
   '/api/v1/auth/github',
   '/api/v1/auth/github/callback',
+  '/api/v1/profiles/ingest/csv',
 ];
 
 const generateCsrfToken = () => crypto.randomBytes(32).toString('hex');

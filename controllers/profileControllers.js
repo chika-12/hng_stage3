@@ -7,21 +7,26 @@ const validateQuery = require('../queryFeatures/validateQuery.js');
 const parseSearchQuery = require('../queryFeatures/searchParser.js');
 const AppError = require('../utils/appError.js');
 const { Parser } = require('json2csv');
-const {redis } = require('../utils/redisClient.js')
-const {invalidateProfileCache} = require('../utils/redisClient.js')
+const { redis } = require('../utils/redisClient.js');
+const { invalidateProfileCache } = require('../utils/redisClient.js');
+const { validateRow, normalizeRow } = require('../utils/validateProfileRow');
+const fs = require('fs');
+const csv = require('csv-parser');
+
+const CHUNK_SIZE = 500;
 
 //Get all profiles and accepts query params
 exports.getProfiles = catchAsync(async (req, res, next) => {
   validateQuery(req.query);
 
   //Cache implementation
-  const cachedKey = `profiles:${JSON.stringify(req.query)}`
-  const cached = await redis.get(cachedKey)
-  if (cached){
+  const cachedKey = `profiles:${JSON.stringify(req.query)}`;
+  const cached = await redis.get(cachedKey);
+  if (cached) {
     return res.status(200).json({
       cached,
-      source: 'redis'
-    })
+      source: 'redis',
+    });
   }
   const { filter, sortBy, page, limit, skip } = queryBuilder(req.query);
 
@@ -47,8 +52,8 @@ exports.getProfiles = catchAsync(async (req, res, next) => {
     },
     data: profiles,
   };
-  await redis.set(cachedKey, response, {ex: 1800})
-  return res.status(200).json(response)
+  await redis.set(cachedKey, response, { ex: 1800 });
+  return res.status(200).json(response);
 });
 
 //Create profile
@@ -132,7 +137,7 @@ exports.createProfiles = catchAsync(async (req, res, next) => {
   const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
   const country_name = regionNames.of(country_id) || country_id;
 
-  const id = uuidv7();
+  //const id = uuidv7();
 
   const profile = await Profile.create({
     id,
@@ -151,8 +156,86 @@ exports.createProfiles = catchAsync(async (req, res, next) => {
     data: profile,
   });
 });
-//Get profile by Id
 
+exports.ingestCSV = catchAsync(async (req, res, next) => {
+  if (!req.file) {
+    return next(new AppError('No file uploaded', 400));
+  }
+
+  const filePath = req.file.path;
+
+  const stats = {
+    total_rows: 0,
+    inserted: 0,
+    skipped: 0,
+    reasons: {},
+  };
+
+  const recordSkip = (reason) => {
+    stats.skipped++;
+    stats.reasons[reason] = (stats.reasons[reason] || 0) + 1;
+  };
+
+  const flushChunk = async (chunk) => {
+    if (chunk.length === 0) return;
+
+    try {
+      const result = await Profile.insertMany(chunk, { ordered: false });
+      stats.inserted += result.length;
+    } catch (err) {
+      if (err.name === 'MongoBulkWriteError') {
+        stats.inserted += err.result.nInserted;
+        for (const writeError of err.writeErrors) {
+          if (writeError.code === 11000) {
+            recordSkip('duplicate_name');
+          } else {
+            recordSkip('write_error');
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
+  };
+
+  try {
+    const readStream = fs.createReadStream(filePath).pipe(csv());
+    let chunk = [];
+
+    for await (const row of readStream) {
+      stats.total_rows++;
+      console.log('RAW ROW:', row);
+
+      const validation = validateRow(row);
+      if (!validation.valid) {
+        recordSkip(validation.reason);
+        continue;
+      }
+
+      chunk.push(normalizeRow(row));
+
+      if (chunk.length >= CHUNK_SIZE) {
+        await flushChunk(chunk);
+        chunk = [];
+      }
+    }
+
+    await flushChunk(chunk);
+    await invalidateProfileCache();
+
+    return res.status(200).json({
+      status: 'success',
+      total_rows: stats.total_rows,
+      inserted: stats.inserted,
+      skipped: stats.skipped,
+      reasons: stats.reasons,
+    });
+  } finally {
+    fs.unlink(filePath, () => {});
+  }
+});
+
+//Get profile by Id
 exports.getProfilesById = catchAsync(async (req, res, next) => {
   const id = req.params.id?.trim();
 
@@ -246,7 +329,7 @@ exports.searchProfiles = catchAsync(async (req, res, next) => {
   return res.status(200).json({
     status: 'success',
     query: q,
-    interpreted: parsedFilter, // helps with debugging
+    interpreted: parsedFilter,
     total,
     page: pg,
     limit: lim,

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const uuid = require('uuid');
 
 const profileSchema = new mongoose.Schema(
   {
@@ -6,6 +7,7 @@ const profileSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+      default: uuid.v7,
     },
     name: {
       type: String,

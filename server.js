@@ -6,14 +6,16 @@ const env = require('dotenv');
 env.config({ path: './config.env' });
 const app = require('./app');
 const mongoose = require('mongoose');
-const redis = require('./utils/redisClient');
+const { redis } = require('./utils/redisClient');
 const port = process.env.PORT || 3000;
 const DB = process.env.DATABASE.replace('<PASSWORD>', process.env.PASSWORD);
 
 mongoose
-  .connect(DB, {maxPoolSize: 20,
-    minPoolSize: 5,   readPreference: 'secondaryPreferred'
-})
+  .connect(DB, {
+    maxPoolSize: 20,
+    minPoolSize: 5,
+    readPreference: 'secondaryPreferred',
+  })
   .then(() => {
     console.log('Database connected');
     app.listen(port, () => {
@@ -24,8 +26,8 @@ mongoose
     console.log('Connection failed', err);
   });
 
-
-redis.set('test', 'Redis is working')
+redis
+  .set('test', 'Redis is working')
   .then(() => redis.get('test'))
   .then((val) => console.log('Redis test:', val))
   .catch((err) => console.log('Redis error:', err));
