@@ -142,7 +142,6 @@ exports.createProfiles = catchAsync(async (req, res, next) => {
   //const id = uuidv7();
 
   const profile = await Profile.create({
-    id,
     name,
     gender,
     gender_probability,
