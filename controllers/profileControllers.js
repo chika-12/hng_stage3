@@ -206,7 +206,7 @@ exports.ingestCSV = catchAsync(async (req, res, next) => {
 
     for await (const row of readStream) {
       stats.total_rows++;
-      console.log('RAW ROW:', row);
+      //console.log('RAW ROW:', row);
 
       const validation = validateRow(row);
       if (!validation.valid) {
